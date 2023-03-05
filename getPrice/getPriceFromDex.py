@@ -17,16 +17,17 @@ from baseFunction import *
 
 global filter_amount
 global token_decimal
-# token_decimal = {}
+token_decimal = {}
+
 filter_amount = {'ETH' : 1, 'BNB' : 3}  #其他稳定币不能小于 1000 个
 
 
-def get_price(token0, token1, amount0, amount1, symbol1): #, decimals0, decimals1, 
+def get_price(token0, token1, amount0, amount1, symbol1, s_token0): #, decimals0, decimals1, 
     # token0  询价的币种
     # token1  代表锚定的币种
     # amount0, amount1  pair中返回的余额，按照token大小返回的
     
-    if token0 < token1:
+    if token0 == s_token0:
         # print("token 0 ")
         token0_amount, token1_amount = amount0, amount1
     else:
@@ -46,6 +47,8 @@ def get_price(token0, token1, amount0, amount1, symbol1): #, decimals0, decimals
     # 池子中 A 的数量是 1 B的数量是 10， A相对于的B价格就是 10
     return r_token1_amount / r_token0_amount
 
+
+
 def get_pair_price(token, blockno):  #获取某个区块的eth价格
 
     for twin in twins: # twin == symbol1
@@ -56,19 +59,19 @@ def get_pair_price(token, blockno):  #获取某个区块的eth价格
             if pairs_address != "0x0000000000000000000000000000000000000000":
                 uni_pair_contract = w3.eth.contract(pairs_address, abi = uni_pair_ABI)  # 实例化
                 amount0, amount1, blockTimestampLast = uni_pair_contract.functions.getReserves().call(block_identifier = blockno) #blockTimestampLast, 最新波动的时间
+                s_token0 = uni_pair_contract.functions.token0().call(block_identifier = blockno)  #标准的 地址
+
                 print("pairs_address", pairs_address, twin, token, amount0, amount1)
-                price = get_price(token, token1, amount0, amount1, twin)
+                price = get_price(token, token1, amount0, amount1, twin, s_token0)
                 if price:
                     # print("blockno, amount0, amount1", blockno, amount0, amount1)
-                    return (price, twin, blockTimestampLast )
+                    return (price, twin, blockTimestampLast)
         except:
             pass
-    # print(blockno)
-    # if pairs_address != "0x0000000000000000000000000000000000000000":
-    #     assert 1 == 0, "666"
+
     return (0, 0, 0)
 
-
+### 在最终的token中补充 dex_cex = {"HMDX" : "mdx"} 来自cex的token, 检查离谱的价格， 检查数量多且没有价格的token
 def main():  # address 获取symbol name
     labels = ("token","txhash","blockno","price","rtoken","symbol", "denom", "blockTsLast")
     token_decimals_path = f"./dex_txh/{chain}_token_decimals.csv"
@@ -77,18 +80,21 @@ def main():  # address 获取symbol name
     token_decimal = { getStandAddr(tokens["token"]) : int(tokens["decimals"]) for tokens in token_decimals}
 
     stable_coin = ["MIM"]
-    no_price_path = glob.glob(f"./dex_txh/{chain}_no_*.csv")
+
+    #   #### add ........
+    no_price_path = glob.glob(f"./dex_txh/{chain}_no_price_add.csv")  #f"./dex_txh/{chain}_no_*.csv"  BSC_no_priceSymbol.csv
     assert len(no_price_path) > 0, "notice !"
     print("fill price ", no_price_path)
 
- 
     for need_price_path in no_price_path:
         txhs = readDefaultCsv(need_price_path)
         save_dir = need_price_path.replace("dex_txh", "dex_fill")
 
         print(f" start from index {start} \n")
         for txh in txhs[start:]:  ## 一行一行遍历
-
+            
+            if txh["symbol"] == "HMDX":
+                continue
             if txh["symbol"] in stable_coin:
                 txh["price"] = 1
                 txh["denom"] = "USDT"
@@ -100,7 +106,6 @@ def main():  # address 获取symbol name
             else:
                 rtoken = getStandAddr(txh["rtoken"])
                 blockno = int(txh["blockno"])
-                
                 price, symbol1, blockTsLast = get_pair_price(rtoken, blockno)
                 if price:  #写入文件
                     txh["price"] = str(price)
@@ -108,8 +113,9 @@ def main():  # address 获取symbol name
                     txh["blockTsLast"] = blockTsLast
                     results = [txh[k] for k in txh]
                     # print(results)
+                    # break
                     write_csv_labels(save_dir, [results], labels)
-        #             # print
+
         #         break
         # break
 
@@ -184,7 +190,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='get crossChain events for eth, bsc, polygon')
     # parser.add_argument('--project', default = 'poly', help='the crosschain project')
     parser.add_argument('--chain', default = 'Polygon', help='get the chain data')  #'ETH' #'Polygon'   #['ETH', 'BSC', 'Polygon']  记得更换链
-    parser.add_argument('--start', default = 0, help='scan from start index') 
+    parser.add_argument('--start', default = 0, help='scan from start index')
     args = parser.parse_args()
     return args
 
@@ -196,7 +202,7 @@ if __name__ == "__main__":
     chain = args.chain
     start = int(args.start)
 
-    w3 = Web3(Web3.HTTPProvider(baseData['use_network'][chain])) 
+    w3 = Web3(Web3.HTTPProvider(baseData['use_network'][chain]))   #[chain]
     w3.middleware_onion.inject(geth_poa_middleware, layer=0)
     w3.isConnected()
 

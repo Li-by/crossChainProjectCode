@@ -25,7 +25,7 @@ func_txhs = {}
 
 chainId_symbol = {
     # 1 : "Solana",
-    2 : "ETH ",
+    2 : "ETH",
     4 : "BSC",
     5 : "Polygon",
 }
@@ -42,6 +42,13 @@ def write_csv(save_dir, results):
     act = open(save_dir, mode='w',newline='')
     writer = csv.writer(act)
     writer.writerow(labels)
+    for i in results:
+        writer.writerow(i)
+    act.close()
+
+def write_csv_no_label(save_dir, results):
+    act = open(save_dir, mode='a',newline='')
+    writer = csv.writer(act)
     for i in results:
         writer.writerow(i)
     act.close()
@@ -73,7 +80,9 @@ def get_fill_txhs(txhs):
     # {'contractAddress': '0x8ea8874192c8c715e620845f833f48f39b24e222', 'txhash': '0x3d515d38124b62c107f979b8eac6ea70881e22ca88c13c7ec7780d7e41cb83d5', 'blockno': '13140651', 'timestamp': '0', 
     # 'srcUser': '0', 'srcID': 'ETH', 'srcToken': '0', 'srcAmount': '0', 
     # 'dstUser': '0', 'dstID': '0', 'dstToken': '0', 'dstAmount': '0'}
- 
+    
+    chain_symbol = {'ETH' : 'ETH', "BSC" : 'BNB', "Polygon" : 'MATIC'}
+
     flag = False  #状态
     txhash = txhs['txhash']
     receipt = func_txhs[txhash]
@@ -87,10 +96,10 @@ def get_fill_txhs(txhs):
         print(txhash)
         assert 1 == 0, "22222"
     
-    elif  methods == "0x9981509f": # wrapAndTransferETH
+    elif  methods == "0x9981509f": # wrapAndTransferETH 转账的是生态币
         # print(receipt)
         txhs['srcUser'] = Web3.toChecksumAddress(receipt["from"])   #chainId_symbol
-        txhs['srcToken'] = "ETH"
+        txhs['srcToken'] = chain_symbol[chain]
         txhs['srcAmount'] = receipt["value"]
 
         chainId = int(receipt["input"][34:74], 16)
@@ -139,6 +148,14 @@ def get_fill_txhs(txhs):
     outs = [txhs[key] for key in txhs]
     return (flag,tuple(outs))
 
+def get_TransferETH(txhs):
+    global funcs_hashs_list
+    txhash = txhs['txhash']
+    receipt = func_txhs[txhash]
+    methods = receipt["input"][0:10]
+    if methods == "0x9981509f": # wrapAndTransferETH 转账的是生态币
+        return txhash
+    return 0
 
 def main():
     global funcs_hashs_list
@@ -149,7 +166,8 @@ def main():
     funcs_hashs_list = [funcs_signature_hashs[methods][:10] for methods in funcs_signature_hashs]
     print(funcs_hashs_list)
     
-    save_dir = os.path.join(datasName, project, chain)
+    save_dir = os.path.join(datasName, project, chain, "src")
+    print(save_dir)
     file_csv_path = glob.glob(save_dir + "/*.csv")
     assert len(file_csv_path) > 0, "notice !"
     
@@ -161,7 +179,19 @@ def main():
             func_txhs[item] = json.loads(temp_json[item])
     print(f"the total func txhs is {len(func_txhs)} ")
 
+    """
+    fill_txhs = []
+    for fi in file_csv_path:
+        sub_blocks = readCsv(fi)
+        for txhs in tqdm(sub_blocks):
+            out = get_TransferETH(txhs)
+            if out:
+                fill_txhs.append([out])
+    file_name = fi.replace(".csv", f"_{chain}_token.csv")
+    print(file_name)
+    write_csv_no_label(file_name, fill_txhs)
 
+    """
     fill_txhs = []
     for fi in file_csv_path:
         sub_blocks = readCsv(fi)
@@ -176,6 +206,7 @@ def main():
     file_name = fi.replace(".csv", f"_filled.csv")
     print(file_name)
     write_csv(file_name, fill_txhs)
+    
 
     # 0x66b1a536a70ebce821f4354a7f1ca46437da53dabca3ad8ac75adfc5ae371e7f  wrapAndTransferETH
     # 0x0ff1dd51c67a1cbde3584a6058f12e4579cde757b3e27cc1e7db3a5e85780374  transferTokens
